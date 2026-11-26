@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readKey } from '../src/config.ts';
@@ -149,6 +149,47 @@ describe('relay', () => {
     const r = await page(p.id, p.token);
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('baton: persist');
+  });
+});
+
+describe('browser activity', () => {
+  test('wait presses are counted, a report resets them, and a quiet browser reads as idle', async () => {
+    const p = await newPairing('idle');
+    await page(p.id, p.token);
+    await page(p.id, p.token, '/wait?after=0');
+    await page(p.id, p.token, '/wait?after=0');
+    type V = { pairing: { browserState: string; waitsSinceReport: number; browserQuietS: number | null } };
+    let v = (await (await api(`/api/pairings/${p.id}`)).json()) as V;
+    expect(v.pairing.waitsSinceReport).toBe(2);
+    expect(v.pairing.browserState).toBe('active');
+    const held = page(p.id, p.token, '/wait?after=0');
+    await Bun.sleep(100);
+    v = (await (await api(`/api/pairings/${p.id}`)).json()) as V;
+    expect(v.pairing.browserState).toBe('waiting');
+    await held;
+    await report(p.id, p.token, 'r', 0);
+    v = (await (await api(`/api/pairings/${p.id}`)).json()) as V;
+    expect(v.pairing.waitsSinceReport).toBe(0);
+    const live = relay.store.get(p.id);
+    if (!live) throw new Error('pairing missing');
+    live.browserActiveAt = new Date(Date.now() - 10 * 60_000).toISOString();
+    v = (await (await api(`/api/pairings/${p.id}`)).json()) as V;
+    expect(v.pairing.browserState).toBe('idle');
+    expect(v.pairing.browserQuietS).toBeGreaterThanOrEqual(600);
+  });
+
+  test('a state file from before the activity fields still loads', () => {
+    const old = mkdtempSync(join(tmpdir(), 'baton-old-'));
+    const pairing = { id: 'abc123', name: 'old', token: 'x'.repeat(32), createdAt: '2026-11-26T05:58:00.255Z', closedAt: null,
+      messages: [{ kind: 'instruction', seq: 1, at: '2026-11-26T06:42:47.772Z', text: 'queued' }],
+      cliCursor: 0, browserSeenSeq: 0, browserLastAt: '2026-11-26T06:08:03.278Z' };
+    writeFileSync(join(old, 'state.json'), JSON.stringify({ version: 1, pairings: [pairing] }));
+    const r = startServer({ port: 0, home: old });
+    const loaded = r.store.get('abc123');
+    expect(loaded?.messages[0]?.text).toBe('queued');
+    expect(loaded && r.store.view(loaded).browserState).toBe('idle');
+    r.stop();
+    rmSync(old, { recursive: true, force: true });
   });
 });
 

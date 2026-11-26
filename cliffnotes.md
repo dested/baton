@@ -29,7 +29,8 @@ test/relay.test.ts          relay + CLI tests
 
 ## Protocol
 
-- Browser: `GET /c/<id>?t=<token>` renders. "Wait for the next instruction" is `GET /c/<id>/wait?t=&after=<seq>`, held up to 50 s, then the page with "New instruction #n" or "Still waiting, press again". "Send report" posts `/c/<id>/report` (urlencoded t, about, report) and 303s back with `sent=<n>`.
+- Browser: `GET /c/<id>?t=<token>` renders. "Wait for the next instruction" is `GET /c/<id>/wait?t=&after=<seq>`, held up to 240 s (BATON_BROWSER_WAIT_S; Bun's idleTimeout is 255), then the page with "New instruction #n" or "Still waiting, press again". "Send report" posts `/c/<id>/report` (urlencoded t, about, report) and 303s back with `sent=<n>`.
 - CLI: `POST /api/pairings`, `GET /api/pairings[/<id>[/prompt|/report[/<n>]]]`, `POST /api/pairings/<id>/send`, `GET /api/pairings/<id>/wait?after=&timeout=` (≤90 s per request; the CLI loops to its own --timeout), `POST /api/pairings/<id>/close` (posts a STOP instruction, then closes).
+- Browser activity: `browserActiveAt` (page load, wait press, wait return, report) and `waitsSinceReport` are persisted; the view derives `browserState` new/waiting/active/idle (idle after 120 s quiet, 900 s while an instruction is picked up but unreported). Both fields default for older state files.
 - `ask` waits for a report newer than the report count at send time; plain `wait` reads from the CLI cursor (last report handed out).
 - Mirrored loopback (WSL): a connect to a closed port can hang instead of being refused, so the CLI probes `/healthz` with a 2.5 s timeout before anything else.

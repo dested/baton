@@ -74,7 +74,16 @@ Heading: "Example Domain".
 
 `http://localhost:7733/c/<id>?t=<token>` is deliberately plain so the extension reads it cheaply: the current
 instruction, a **Wait for the next instruction** button, a **Your report** box, a **Send report** button, and the
-last few exchanges. No scripts. "Wait" holds the request up to 50 s, then says **Still waiting, press again**.
+last few exchanges. No scripts. "Wait" holds the request up to 4 minutes (`BATON_BROWSER_WAIT_S`), so an idle
+extension spends few steps, then says **Still waiting, press again**.
+
+## When the extension goes quiet
+
+Claude in Chrome's chat turn has a step budget, and a long wait can end it. The prompt tells it to say
+"baton paused. Type continue…" when it stops, and to pick the loop back up when you type **continue**.
+`baton status` reports `browser idle since <time>` once the page has had no visit for two minutes with nothing
+in flight (or fifteen minutes into an unreported task), and `ask` warns up front when it's sending to an idle
+browser.
 
 ## Security
 

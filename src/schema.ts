@@ -23,6 +23,10 @@ export const Pairing = z.object({
   /** last instruction seq the browser page rendered */
   browserSeenSeq: z.number().int().nonnegative(),
   browserLastAt: z.string().nullable(),
+  /** last time the browser did anything on the page: a load, a wait press, a wait returning, a report */
+  browserActiveAt: z.string().nullable().default(null),
+  /** wait presses since the last report (reset by a report); null for pairings made before this was counted */
+  waitsSinceReport: z.number().int().nonnegative().nullable().default(null),
 });
 export type Pairing = z.infer<typeof Pairing>;
 
@@ -44,6 +48,12 @@ export const PairingView = z.object({
   browserLastAt: z.string().nullable(),
   browserWaiting: z.boolean(),
   pickedUp: z.boolean(),
+  /** new: never opened the page · waiting: a wait is held open · active: recently busy · idle: gone quiet, its chat turn probably ended */
+  browserState: z.enum(['new', 'waiting', 'active', 'idle']),
+  browserActiveAt: z.string().nullable(),
+  /** seconds since browserActiveAt (null before the first visit) */
+  browserQuietS: z.number().int().nullable(),
+  waitsSinceReport: z.number().int().nullable(),
 });
 export type PairingView = z.infer<typeof PairingView>;
 

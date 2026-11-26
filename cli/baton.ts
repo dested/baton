@@ -191,8 +191,34 @@ function line(p: PairingView): string {
   const parts = [`${p.id} ${p.closedAt !== null ? 'closed' : 'open'} "${p.name}"`];
   parts.push(p.lastInstruction ? `${p.instructions} instr (#${p.lastInstruction.seq} ${p.pickedUp ? 'picked up' : 'not picked up'})` : '0 instr');
   parts.push(`${p.reports} reports (${p.unreadReports} unread)`);
-  parts.push(p.browserWaiting ? 'browser waiting' : p.browserLastAt ? `browser seen ${p.browserLastAt.slice(11, 19)}Z` : 'browser never opened the page');
+  parts.push(browserLine(p));
   return parts.join(' · ');
+}
+
+const NUDGE = 'ask the user to type continue in Claude in Chrome';
+
+function ago(s: number): string {
+  return s < 120 ? `${s}s` : s < 7200 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+}
+
+function presses(p: PairingView): string {
+  const n = p.waitsSinceReport;
+  return n === null ? '' : `${n} wait press${n === 1 ? '' : 'es'} since the last report`;
+}
+
+function browserLine(p: PairingView): string {
+  const at = p.browserActiveAt ? `${p.browserActiveAt.slice(11, 16)}Z` : '';
+  const quiet = p.browserQuietS ?? 0;
+  switch (p.browserState) {
+    case 'new':
+      return 'browser never opened the page: ask the user to paste the prompt into Claude in Chrome (baton prompt <id>)';
+    case 'waiting':
+      return `browser waiting${presses(p) ? ` (${presses(p)})` : ''}`;
+    case 'active':
+      return `browser active ${ago(quiet)} ago`;
+    case 'idle':
+      return `browser idle since ${at} (${ago(quiet)}${presses(p) ? `, ${presses(p)}` : ''}): ${NUDGE}`;
+  }
 }
 
 /** Head and tail of a long report, bx-style: the budget is in characters, the cut says how to get the rest. */
@@ -232,10 +258,12 @@ async function waitLoop(id: string, flags: Flags, after: number | undefined): Pr
     if (Date.now() >= deadline) {
       const p = r.pairing;
       const answered = p.lastInstruction !== null && p.lastReport !== null && (p.lastReport.about ?? 0) >= p.lastInstruction.seq;
-      const why = answered
+      const why = p.browserState === 'idle' || p.browserState === 'new'
+        ? browserLine(p)
+        : answered
         ? 'last instruction already reported'
         : !p.pickedUp
-          ? 'browser has not picked up the last instruction (user may need to press "Wait for the next instruction")'
+          ? 'browser has not picked up the last instruction yet'
           : p.browserWaiting
             ? 'browser is waiting, so it may have skipped the report'
             : 'browser picked it up and is still working';
@@ -281,6 +309,9 @@ async function main(argv: string[]): Promise<number> {
       const pid = id();
       const text = await readText(pos, flags);
       const before = await call(PairingOnly, 'GET', path(pid));
+      if (!flags.json && (before.pairing.browserState === 'idle' || before.pairing.browserState === 'new')) {
+        console.error(`baton: warning: ${browserLine(before.pairing)}`);
+      }
       const r = await call(SendResult, 'POST', path(pid, '/send'), { text });
       const copied = flags.clip ? await toClipboard(text) : false;
       if (cmd === 'send') {

@@ -26,7 +26,9 @@ the report, cut to 3000 chars (head and tail kept, `--full` or `baton show <id> 
    baton ask <id> "<one self-contained instruction>"
    ```
    It blocks up to 220 s (`--timeout`). Exit 3 is a timeout, not a failure: its line says why
-   (not picked up, still working) and `baton wait <id>` resumes. Keep each call under ~4 minutes.
+   (not picked up, still working, idle) and `baton wait <id>` resumes. Keep each call under ~4 minutes.
+   When status or a timeout says **browser idle**, the extension's chat turn has ended: ask the user to type
+   `continue` in the Claude in Chrome chat. A queued instruction is picked up as soon as it reloads the page.
 4. `baton close <id>` when done: the page shows STOP and the extension stops.
 
 ## Writing instructions

@@ -14,6 +14,15 @@ export function batonPort(): number {
   return n;
 }
 
+/** How long a "Wait for the next instruction" press is held open. BATON_BROWSER_WAIT_S overrides (max 240: Bun's idle timeout is 255 s). */
+export function browserWaitMs(): number {
+  const raw = process.env.BATON_BROWSER_WAIT_S;
+  if (raw === undefined || raw === '') return 240_000;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`BATON_BROWSER_WAIT_S=${raw} is not a number of seconds`);
+  return Math.min(n, 240) * 1000;
+}
+
 /**
  * The tool's own config dir: the CLI key and the pairings state, user-only (0700).
  * BATON_HOME overrides it, e.g. to point a Windows CLI at a relay running in WSL.

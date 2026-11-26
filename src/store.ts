@@ -4,6 +4,11 @@ import { StateFile, type Message, type Pairing, type PairingView } from './schem
 
 type Waiter = () => void;
 
+/** Quiet this long with nothing in flight, the extension has most likely ended its chat turn. */
+const IDLE_QUIET_S = 120;
+/** Quiet this long while it holds an instruction it hasn't reported on: probably stopped mid-task. */
+const WORKING_QUIET_S = 900;
+
 /** Pairings, persisted to state.json (0600) after every change, with in-memory waiters for long polls. */
 export class Store {
   private pairings = new Map<string, Pairing>();
@@ -39,6 +44,8 @@ export class Store {
       cliCursor: 0,
       browserSeenSeq: 0,
       browserLastAt: null,
+      browserActiveAt: null,
+      waitsSinceReport: 0,
     };
     this.pairings.set(id, p);
     this.save();
@@ -64,6 +71,8 @@ export class Store {
   addReport(p: Pairing, text: string, about: number): Message {
     const m: Message = { kind: 'report', seq: lastSeq(p, 'report') + 1, at: new Date().toISOString(), text, about };
     p.messages.push(m);
+    p.waitsSinceReport = 0;
+    p.browserActiveAt = m.at;
     this.save();
     fire(this.reportWaiters, p.id);
     return m;
@@ -79,6 +88,7 @@ export class Store {
   markBrowserSeen(p: Pairing): void {
     p.browserSeenSeq = lastSeq(p, 'instruction');
     p.browserLastAt = new Date().toISOString();
+    p.browserActiveAt = p.browserLastAt;
     this.save();
   }
 
@@ -92,6 +102,9 @@ export class Store {
   /** Resolves when an instruction newer than `after` exists, the pairing closes, or ms pass. */
   async waitInstruction(p: Pairing, after: number, ms: number): Promise<'ready' | 'timeout' | 'closed'> {
     this.browserWaits.set(p.id, (this.browserWaits.get(p.id) ?? 0) + 1);
+    p.waitsSinceReport = (p.waitsSinceReport ?? 0) + 1;
+    p.browserActiveAt = new Date().toISOString();
+    this.save();
     try {
       return await waitFor(this.instructionWaiters, p.id, ms, () =>
         p.closedAt !== null ? 'closed' : lastSeq(p, 'instruction') > after ? 'ready' : null,
@@ -112,6 +125,14 @@ export class Store {
     const instructions = p.messages.filter((m) => m.kind === 'instruction');
     const reports = p.messages.filter((m) => m.kind === 'report');
     const lastInstruction = instructions.at(-1) ?? null;
+    const lastReport = reports.at(-1) ?? null;
+    const pickedUp = lastInstruction !== null && p.browserSeenSeq >= lastInstruction.seq;
+    const waiting = (this.browserWaits.get(p.id) ?? 0) > 0;
+    const activeAt = p.browserActiveAt ?? p.browserLastAt;
+    const quietS = activeAt === null ? null : Math.max(0, Math.round((Date.now() - Date.parse(activeAt)) / 1000));
+    const working = pickedUp && lastInstruction !== null && (lastReport?.about ?? 0) < lastInstruction.seq;
+    const browserState: PairingView['browserState'] =
+      quietS === null ? 'new' : waiting ? 'waiting' : quietS < (working ? WORKING_QUIET_S : IDLE_QUIET_S) ? 'active' : 'idle';
     return {
       id: p.id,
       name: p.name,
@@ -122,11 +143,15 @@ export class Store {
       unreadReports: reports.filter((r) => r.seq > p.cliCursor).length,
       cliCursor: p.cliCursor,
       lastInstruction,
-      lastReport: reports.at(-1) ?? null,
+      lastReport,
       browserSeenSeq: p.browserSeenSeq,
       browserLastAt: p.browserLastAt,
-      browserWaiting: (this.browserWaits.get(p.id) ?? 0) > 0,
-      pickedUp: lastInstruction !== null && p.browserSeenSeq >= lastInstruction.seq,
+      browserWaiting: waiting,
+      pickedUp,
+      browserState,
+      browserActiveAt: activeAt,
+      browserQuietS: quietS,
+      waitsSinceReport: p.waitsSinceReport,
     };
   }
 }

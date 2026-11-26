@@ -11,7 +11,7 @@ export const VERSION = '0.1.0';
 export type ServerOptions = {
   port: number;
   home: string;
-  /** how long the page's "Wait for the next instruction" holds before "Still waiting" (default 50 s) */
+  /** how long the page's "Wait for the next instruction" holds before "Still waiting" (default 240 s) */
   browserWaitMs?: number;
   /** the cap on one CLI long-poll request (default 90 s; the CLI loops) */
   cliWaitCapMs?: number;
@@ -57,7 +57,7 @@ export function startServer(opts: ServerOptions) {
   ensureHome(opts.home);
   const key = loadOrCreateKey(opts.home);
   const store = new Store(statePath(opts.home));
-  const browserWaitMs = opts.browserWaitMs ?? 50_000;
+  const browserWaitMs = opts.browserWaitMs ?? 240_000;
   const cliWaitCapMs = opts.cliWaitCapMs ?? 90_000;
   let port = opts.port;
 
@@ -197,7 +197,7 @@ export function startServer(opts: ServerOptions) {
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: opts.port,
-    idleTimeout: 120,
+    idleTimeout: 255, // Bun's max; the browser hold (240 s) must stay under it
     async fetch(req) {
       const url = new URL(req.url);
       if (!allowedHost(req.headers.get('host'))) {
