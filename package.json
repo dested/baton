@@ -1,0 +1,29 @@
+{
+  "name": "baton",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pass tasks between Claude Code and Claude in Chrome through a local relay",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dested/baton.git"
+  },
+  "bin": {
+    "baton": "./cli/baton.ts"
+  },
+  "scripts": {
+    "start": "bun server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/",
+    "service:install": "sh scripts/install-service.sh",
+    "service:uninstall": "sh scripts/install-service.sh --uninstall"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^7.0.2"
+  }
+}
